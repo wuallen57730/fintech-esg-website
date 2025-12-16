@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI投資決策小幫手 - Multi-Agent智能投研系統</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- 主標題區 -->
+    <header class="main-header">
+        <div class="header-content">
+            <h1>AI投資決策小幫手</h1>
+            <p class="subtitle">自動閱讀 × 多智能體協作 × 投研流程再造</p>
+        </div>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="container">
+        <!-- 分析配置區 -->
+        <section id="config-section" class="card">
+            <div class="card-header">
+                <h2>📊 分析配置</h2>
+            </div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label for="market-select">選擇市場</label>
+                    <select id="market-select" class="form-control">
+                        <option value="US">美股 (US)</option>
+                        <option value="TW">台股 (TW)</option>
+                        <option value="HK">港股 (HK)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="stock-input">股票代碼</label>
+                    <input type="text" id="stock-input" class="form-control" placeholder="例如：TSLA (美股), 2330 (台股), 00700 (港股)">
+                    <small class="form-hint">
+                        • 美股示例: AAPL (蘋果), TSLA (特斯拉), MSFT (微軟)<br>
+                        • 台股示例: 2330 (台積電), 2317 (鴻海), 2454 (聯發科)<br>
+                        • 港股示例: 00700 (騰訊), 09988 (阿里巴巴)
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="analysis-date">分析日期</label>
+                    <input type="date" id="analysis-date" class="form-control">
+                </div>
+
+                <div class="form-group">
+                    <label>研究深度</label>
+                    <div class="slider-container">
+                        <input type="range" id="depth-slider" min="1" max="5" value="3" class="slider">
+                        <div class="slider-labels">
+                            <span>1級 - 快速分析</span>
+                            <span>5級 - 全面分析</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>👥 選擇分析師團隊</label>
+                    <div class="agent-selection">
+                        <div class="agent-option">
+                            <input type="checkbox" id="agent-technical" checked>
+                            <label for="agent-technical">
+                                <span class="agent-icon">📈</span>
+                                <span>技術分析師</span>
+                            </label>
+                        </div>
+                        <div class="agent-option">
+                            <input type="checkbox" id="agent-fundamental" checked>
+                            <label for="agent-fundamental">
+                                <span class="agent-icon">💼</span>
+                                <span>基本面分析師</span>
+                            </label>
+                        </div>
+                        <div class="agent-option">
+                            <input type="checkbox" id="agent-news" checked>
+                            <label for="agent-news">
+                                <span class="agent-icon">📰</span>
+                                <span>新聞分析師</span>
+                            </label>
+                        </div>
+                        <div class="agent-option">
+                            <input type="checkbox" id="agent-sentiment" checked>
+                            <label for="agent-sentiment">
+                                <span class="agent-icon">💬</span>
+                                <span>情緒分析師</span>
+                            </label>
+                        </div>
+                    </div>
+                    <p class="selected-count">已選擇 <strong>4</strong> 個分析師: 技術分析師, 基本面分析師, 新聞分析師, 情緒分析師</p>
+                </div>
+
+                <button id="start-analysis-btn" class="btn btn-primary">
+                    <span class="btn-icon">🚀</span>
+                    開始分析
+                </button>
+            </div>
+        </section>
+
+        <!-- 分析進度區 -->
+        <section id="progress-section" class="card" style="display: none;">
+            <div class="card-header">
+                <h2>📊 股票分析</h2>
+            </div>
+            <div class="card-body">
+                <div class="analysis-status">
+                    <p class="status-text">✅ 分析完成: <span id="analysis-id">analysis_xxx</span></p>
+                </div>
+
+                <div class="progress-info">
+                    <h3>📊 分析進度</h3>
+                    <p class="current-step">當前步驟: <strong id="current-step-text">生成報告</strong></p>
+
+                    <div class="progress-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">進度</div>
+                            <div class="stat-value" id="progress-percent">100.0%</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">已用時間</div>
+                            <div class="stat-value" id="elapsed-time">1.6秒</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">預計剩餘</div>
+                            <div class="stat-value" id="remaining-time">已完成</div>
+                        </div>
+                    </div>
+
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progress-bar" style="width: 100%"></div>
+                    </div>
+
+                    <div class="task-info">
+                        <p>當前任務: 整理所有分析結果，生成最終投資報告</p>
+                    </div>
+
+                    <div class="completion-status">
+                        <p>✅ 當前狀態: ✅ 分析成功完成！</p>
+                    </div>
+                </div>
+
+                <button id="view-report-btn" class="btn btn-primary">
+                    📊 查看分析報告
+                </button>
+            </div>
+        </section>
+
+        <!-- 投資決策摘要區 -->
+        <section id="summary-section" class="card" style="display: none;">
+            <div class="card-header">
+                <h2 id="stock-title">📊 TSLA 分析結果</h2>
+            </div>
+            <div class="card-body">
+                <div class="decision-summary">
+                    <h3>🎯 投資決策摘要</h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <div class="summary-label">投資建議</div>
+                            <div class="summary-value" id="recommendation">賣出</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">置信度</div>
+                            <div class="summary-value" id="confidence">84.0%</div>
+                            <div class="summary-change positive" id="confidence-change">↑ 34.0%</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">風險評分</div>
+                            <div class="summary-value" id="risk-score">68.0%</div>
+                            <div class="summary-change negative" id="risk-change">↑ 38.0%</div>
+                        </div>
+                        <div class="summary-item">
+                            <div class="summary-label">目標價位</div>
+                            <div class="summary-value" id="target-price">$134.57</div>
+                        </div>
+                    </div>
+
+                    <div class="ai-reasoning">
+                        <h4>🧠 AI分析推理</h4>
+                        <div id="ai-reasoning-content" class="reasoning-content">
+                            <p>基於對美股TSLA的綜合分析，我們的AI分析團隊得出以下結論：</p>
+                            <p><strong>投資建議: 賣出 目標價格: $172.53</strong></p>
+                            <p><strong>主要分析要點:</strong></p>
+                            <ol>
+                                <li><strong>技術面分析:</strong> 當前價格趨勢顯示下跌信號</li>
+                                <li><strong>基本面評估:</strong> 公司財務狀況需關注</li>
+                                <li><strong>市場情緒:</strong> 投資者情緒謹慎</li>
+                                <li><strong>風險評估:</strong> 當前風險水平為較高</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 詳細分析報告區 -->
+        <section id="detail-section" class="card" style="display: none;">
+            <div class="card-header">
+                <h2>📋 詳細分析報告</h2>
+            </div>
+            <div class="card-body">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="technical">📈 技術面分析</button>
+                    <button class="tab-btn" data-tab="fundamental">💼 基本面分析</button>
+                    <button class="tab-btn" data-tab="sentiment">💬 市場情緒分析</button>
+                    <button class="tab-btn" data-tab="news">📰 新聞事件分析</button>
+                    <button class="tab-btn" data-tab="risk">⚠️ 風險評估</button>
+                    <button class="tab-btn" data-tab="recommendation">💡 投資建議</button>
+                </div>
+
+                <div class="tab-content">
+                    <div id="technical-tab" class="tab-pane active">
+                        <h3>📈 技術面分析</h3>
+                        <div id="technical-content" class="content-area">
+                            <p>載入中...</p>
+                        </div>
+                    </div>
+                    <div id="fundamental-tab" class="tab-pane">
+                        <h3>💼 基本面分析</h3>
+                        <div id="fundamental-content" class="content-area">
+                            <p>載入中...</p>
+                        </div>
+                    </div>
+                    <div id="sentiment-tab" class="tab-pane">
+                        <h3>💬 市場情緒分析</h3>
+                        <div id="sentiment-content" class="content-area">
+                            <p>載入中...</p>
+                        </div>
+                    </div>
+                    <div id="news-tab" class="tab-pane">
+                        <h3>📰 新聞事件分析</h3>
+                        <div id="news-content" class="content-area">
+                            <p>載入中...</p>
+                        </div>
+                    </div>
+                    <div id="risk-tab" class="tab-pane">
+                        <h3>⚠️ 風險評估</h3>
+                        <div id="risk-content" class="content-area">
+                            <p>載入中...</p>
+                        </div>
+                    </div>
+                    <div id="recommendation-tab" class="tab-pane">
+                        <h3>💡 投資建議</h3>
+                        <div id="recommendation-content" class="content-area">
+                            <p>載入中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 頁腳 -->
+    <footer class="main-footer">
+        <p>🤖 Generated with AI Multi-Agent System | Powered by ChatGPT API</p>
+        <p class="disclaimer">⚠️ 此為演示數據，實際分析需要配置正確的API密鑰。投資有風險，決策需謹慎。</p>
+    </footer>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
