@@ -1,0 +1,27 @@
+# 不部署到 Vercel 的文件
+
+# 配置文件（包含敏感信息）
+config.js
+
+# Claude 設置
+.claude/
+
+# Git
+.git/
+.gitignore
+
+# 文檔（可選，如果想部署文檔則移除）
+# README.md
+# QUICK_START.md
+# ENHANCED_FEATURES.md
+
+# 備份文件
+*-original.*
+*-backup.*
+*-enhanced.*
+
+# 臨時文件
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
