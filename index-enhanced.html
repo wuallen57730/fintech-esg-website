@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI投資決策小幫手 Pro - 增強版</title>
+    <link rel="stylesheet" href="styles-enhanced.css">
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- jsPDF for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+    <!-- 側邊欄 -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>🤖 AI投資助手</h2>
+            <button class="sidebar-toggle" id="sidebar-toggle">☰</button>
+        </div>
+
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-page="analysis">
+                <span class="nav-icon">📊</span>
+                <span class="nav-text">股票分析</span>
+            </a>
+            <a href="#" class="nav-item" data-page="watchlist">
+                <span class="nav-icon">⭐</span>
+                <span class="nav-text">觀察清單</span>
+                <span class="badge" id="watchlist-count">0</span>
+            </a>
+            <a href="#" class="nav-item" data-page="history">
+                <span class="nav-icon">📜</span>
+                <span class="nav-text">分析歷史</span>
+                <span class="badge" id="history-count">0</span>
+            </a>
+            <a href="#" class="nav-item" data-page="compare">
+                <span class="nav-icon">⚖️</span>
+                <span class="nav-text">股票比較</span>
+            </a>
+            <a href="#" class="nav-item" data-page="dashboard">
+                <span class="nav-icon">📈</span>
+                <span class="nav-text">投資儀表板</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="api-status">
+                <span class="status-dot" id="api-status-dot"></span>
+                <span id="api-status-text">API 未連接</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 主內容區 -->
+    <div class="main-wrapper">
+        <!-- 頂部標題欄 -->
+        <header class="top-header">
+            <div class="header-left">
+                <button class="menu-btn" id="mobile-menu-btn">☰</button>
+                <h1>AI投資決策小幫手 Pro</h1>
+            </div>
+            <div class="header-right">
+                <div class="quick-search">
+                    <input type="text" id="quick-search" placeholder="快速搜尋股票代碼..." class="search-input">
+                    <button class="search-btn" id="quick-search-btn">🔍</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主內容 -->
+        <main class="content" id="main-content">
+
+            <!-- 頁面：股票分析 -->
+            <div class="page active" id="page-analysis">
+                <!-- AI 評分卡片（新功能）-->
+                <section class="ai-score-card" id="ai-score-section" style="display: none;">
+                    <div class="score-container">
+                        <div class="score-circle">
+                            <svg width="180" height="180">
+                                <circle cx="90" cy="90" r="75" fill="none" stroke="#e0e0e0" stroke-width="15"/>
+                                <circle id="score-progress" cx="90" cy="90" r="75" fill="none" stroke="#1e88e5"
+                                        stroke-width="15" stroke-linecap="round"
+                                        stroke-dasharray="471" stroke-dashoffset="471"
+                                        transform="rotate(-90 90 90)"/>
+                            </svg>
+                            <div class="score-value">
+                                <span id="ai-score">0</span>
+                                <span class="score-max">/10</span>
+                            </div>
+                        </div>
+                        <div class="score-info">
+                            <h3 id="score-stock-name">股票評分</h3>
+                            <p class="score-label" id="score-label">待分析</p>
+                            <div class="score-metrics">
+                                <div class="metric">
+                                    <span class="metric-icon">📈</span>
+                                    <span class="metric-label">技術面</span>
+                                    <span class="metric-value" id="technical-score">-</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-icon">💼</span>
+                                    <span class="metric-label">基本面</span>
+                                    <span class="metric-value" id="fundamental-score">-</span>
+                                </div>
+                                <div class="metric">
+                                    <span class="metric-icon">💬</span>
+                                    <span class="metric-label">情緒面</span>
+                                    <span class="metric-value" id="sentiment-score">-</span>
+                                </div>
+                            </div>
+                            <button class="btn btn-secondary" id="add-to-watchlist-btn">
+                                <span>⭐</span> 加入觀察清單
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 原有的分析配置區 -->
+                <section id="config-section" class="card">
+                    <div class="card-header">
+                        <h2>📊 分析配置</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="market-select">選擇市場</label>
+                                <select id="market-select" class="form-control">
+                                    <option value="US">🇺🇸 美股 (US)</option>
+                                    <option value="TW">🇹🇼 台股 (TW)</option>
+                                    <option value="HK">🇭🇰 港股 (HK)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="stock-input">股票代碼</label>
+                                <input type="text" id="stock-input" class="form-control" placeholder="例如：TSLA, 2330, 00700">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="analysis-date">分析日期</label>
+                                <input type="date" id="analysis-date" class="form-control">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>研究深度 <span id="depth-value">3</span> 級</label>
+                            <div class="slider-container">
+                                <input type="range" id="depth-slider" min="1" max="5" value="3" class="slider">
+                                <div class="slider-labels">
+                                    <span>1級 - 快速</span>
+                                    <span>3級 - 標準</span>
+                                    <span>5級 - 深度</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>👥 選擇分析師團隊</label>
+                            <div class="agent-selection">
+                                <div class="agent-option">
+                                    <input type="checkbox" id="agent-technical" checked>
+                                    <label for="agent-technical">
+                                        <span class="agent-icon">📈</span>
+                                        <span>技術分析師</span>
+                                    </label>
+                                </div>
+                                <div class="agent-option">
+                                    <input type="checkbox" id="agent-fundamental" checked>
+                                    <label for="agent-fundamental">
+                                        <span class="agent-icon">💼</span>
+                                        <span>基本面分析師</span>
+                                    </label>
+                                </div>
+                                <div class="agent-option">
+                                    <input type="checkbox" id="agent-news" checked>
+                                    <label for="agent-news">
+                                        <span class="agent-icon">📰</span>
+                                        <span>新聞分析師</span>
+                                    </label>
+                                </div>
+                                <div class="agent-option">
+                                    <input type="checkbox" id="agent-sentiment" checked>
+                                    <label for="agent-sentiment">
+                                        <span class="agent-icon">💬</span>
+                                        <span>情緒分析師</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <p class="selected-count">已選擇 <strong id="agent-count">4</strong> 個分析師</p>
+                        </div>
+
+                        <div class="button-group">
+                            <button id="start-analysis-btn" class="btn btn-primary">
+                                <span class="btn-icon">🚀</span>
+                                開始分析
+                            </button>
+                            <button id="export-pdf-btn" class="btn btn-secondary" style="display: none;">
+                                <span class="btn-icon">📄</span>
+                                匯出PDF
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 分析進度區 -->
+                <section id="progress-section" class="card" style="display: none;">
+                    <div class="card-header">
+                        <h2>📊 分析進度</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress-info">
+                            <p class="current-step">當前步驟: <strong id="current-step-text">初始化</strong></p>
+                            <div class="progress-bar-container">
+                                <div class="progress-bar" id="progress-bar"></div>
+                                <span class="progress-text" id="progress-percent">0%</span>
+                            </div>
+                            <div class="time-info">
+                                <span>⏱️ 已用時間: <strong id="elapsed-time">0秒</strong></span>
+                                <span>⏳ 預計剩餘: <strong id="remaining-time">計算中...</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 投資決策摘要區 -->
+                <section id="summary-section" class="card" style="display: none;">
+                    <div class="card-header">
+                        <h2 id="stock-title">📊 分析結果</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="summary-grid">
+                            <div class="summary-card">
+                                <div class="summary-icon">💡</div>
+                                <div class="summary-content">
+                                    <div class="summary-label">投資建議</div>
+                                    <div class="summary-value large" id="recommendation">分析中</div>
+                                </div>
+                            </div>
+                            <div class="summary-card">
+                                <div class="summary-icon">🎯</div>
+                                <div class="summary-content">
+                                    <div class="summary-label">置信度</div>
+                                    <div class="summary-value" id="confidence">-</div>
+                                    <div class="summary-change" id="confidence-change"></div>
+                                </div>
+                            </div>
+                            <div class="summary-card">
+                                <div class="summary-icon">⚠️</div>
+                                <div class="summary-content">
+                                    <div class="summary-label">風險評分</div>
+                                    <div class="summary-value" id="risk-score">-</div>
+                                    <div class="summary-change" id="risk-change"></div>
+                                </div>
+                            </div>
+                            <div class="summary-card">
+                                <div class="summary-icon">💰</div>
+                                <div class="summary-content">
+                                    <div class="summary-label">目標價位</div>
+                                    <div class="summary-value" id="target-price">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ai-reasoning">
+                            <h3>🧠 AI分析推理</h3>
+                            <div id="ai-reasoning-content" class="reasoning-content">載入中...</div>
+                        </div>
+
+                        <button id="view-detail-btn" class="btn btn-primary">查看詳細報告</button>
+                    </div>
+                </section>
+
+                <!-- 詳細分析報告區 -->
+                <section id="detail-section" class="card" style="display: none;">
+                    <div class="card-header">
+                        <h2>📋 詳細分析報告</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="tabs">
+                            <button class="tab-btn active" data-tab="technical">📈 技術面</button>
+                            <button class="tab-btn" data-tab="fundamental">💼 基本面</button>
+                            <button class="tab-btn" data-tab="sentiment">💬 情緒面</button>
+                            <button class="tab-btn" data-tab="news">📰 新聞</button>
+                            <button class="tab-btn" data-tab="risk">⚠️ 風險</button>
+                            <button class="tab-btn" data-tab="rec">💡 建議</button>
+                        </div>
+                        <div class="tab-content">
+                            <div id="technical-tab" class="tab-pane active">
+                                <div id="technical-content" class="content-area">載入中...</div>
+                            </div>
+                            <div id="fundamental-tab" class="tab-pane">
+                                <div id="fundamental-content" class="content-area">載入中...</div>
+                            </div>
+                            <div id="sentiment-tab" class="tab-pane">
+                                <div id="sentiment-content" class="content-area">載入中...</div>
+                            </div>
+                            <div id="news-tab" class="tab-pane">
+                                <div id="news-content" class="content-area">載入中...</div>
+                            </div>
+                            <div id="risk-tab" class="tab-pane">
+                                <div id="risk-content" class="content-area">載入中...</div>
+                            </div>
+                            <div id="rec-tab" class="tab-pane">
+                                <div id="rec-content" class="content-area">載入中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- 頁面：觀察清單 -->
+            <div class="page" id="page-watchlist">
+                <div class="page-header">
+                    <h2>⭐ 我的觀察清單</h2>
+                    <p>追蹤您感興趣的股票</p>
+                </div>
+
+                <div id="watchlist-empty" class="empty-state">
+                    <div class="empty-icon">📋</div>
+                    <h3>觀察清單是空的</h3>
+                    <p>分析股票後，點擊「加入觀察清單」來追蹤它們</p>
+                </div>
+
+                <div id="watchlist-container" class="watchlist-grid"></div>
+            </div>
+
+            <!-- 頁面：分析歷史 -->
+            <div class="page" id="page-history">
+                <div class="page-header">
+                    <h2>📜 分析歷史記錄</h2>
+                    <p>查看過去的分析結果</p>
+                    <button class="btn btn-secondary" id="clear-history-btn">🗑️ 清空歷史</button>
+                </div>
+
+                <div id="history-empty" class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <h3>還沒有分析記錄</h3>
+                    <p>開始分析股票，您的分析結果將自動保存在這裡</p>
+                </div>
+
+                <div id="history-container" class="history-list"></div>
+            </div>
+
+            <!-- 頁面：股票比較 -->
+            <div class="page" id="page-compare">
+                <div class="page-header">
+                    <h2>⚖️ 股票比較</h2>
+                    <p>並排比較多檔股票的分析結果</p>
+                </div>
+
+                <div class="compare-selector">
+                    <p>從觀察清單或歷史記錄中選擇股票進行比較</p>
+                    <button class="btn btn-primary" id="start-compare-btn">選擇股票比較</button>
+                </div>
+
+                <div id="compare-container" class="compare-grid"></div>
+            </div>
+
+            <!-- 頁面：投資儀表板 -->
+            <div class="page" id="page-dashboard">
+                <div class="page-header">
+                    <h2>📈 投資儀表板</h2>
+                    <p>觀察清單整體表現概覽</p>
+                </div>
+
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-icon">⭐</div>
+                        <div class="stat-value" id="total-watchlist">0</div>
+                        <div class="stat-label">觀察中</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value" id="total-analyses">0</div>
+                        <div class="stat-label">總分析次數</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">💡</div>
+                        <div class="stat-value" id="buy-signals">0</div>
+                        <div class="stat-label">買入信號</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⚠️</div>
+                        <div class="stat-value" id="sell-signals">0</div>
+                        <div class="stat-label">賣出信號</div>
+                    </div>
+                </div>
+
+                <div class="dashboard-charts">
+                    <div class="chart-container">
+                        <h3>觀察清單 AI 評分分布</h3>
+                        <canvas id="scoreDistributionChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>投資建議分布</h3>
+                        <canvas id="recommendationChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- 載入腳本 -->
+    <script src="config.js"></script>
+    <script src="script-enhanced.js"></script>
+</body>
+</html>
