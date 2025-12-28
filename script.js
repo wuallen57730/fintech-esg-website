@@ -326,23 +326,23 @@ async function runAnalysis(market, stock, date, depth, agents) {
         updateProgress(progress, `${getAgentName(agent)}正在分析`, startTime);
 
         agentResults[agent] = await callAgentAPI(agent, market, stock, date, depth);
-        await sleep(800);
+        await sleep(3000); // 3秒延遲，適應 Tier 1 的 500 RPM 限制
     }
 
     // 多空辯論
     updateProgress(75, '多空辯論研究中', startTime);
     const debate = await runDebate(agentResults, market, stock);
-    await sleep(1000);
+    await sleep(3000); // 3秒延遲
 
     // 風險評估
     updateProgress(85, '風險管理評估', startTime);
     const risk = await runRiskManagement(agentResults, debate);
-    await sleep(800);
+    await sleep(3000); // 3秒延遲
 
     // 最終決策
     updateProgress(95, '生成最終投資建議', startTime);
     const decision = await runPortfolioManager(agentResults, debate, risk, market, stock);
-    await sleep(800);
+    await sleep(1000);
 
     // 完成
     updateProgress(100, '分析完成', startTime);
@@ -428,12 +428,13 @@ async function runDebate(agentResults, market, stock) {
     const bearPrompt = `作為空頭分析師，基於以下分析，提出 ${market} ${stock} 的看空論點：\n${allAnalysis}`;
 
     try {
-        const [bullCase, bearCase] = await Promise.all([
-            callChatGPT(bullPrompt),
-            callChatGPT(bearPrompt)
-        ]);
+        // 改為順序執行，避免並行請求觸發速率限制
+        const bullCase = await callChatGPT(bullPrompt);
+        await sleep(3000); // 3秒延遲，適應 Tier 1 的 500 RPM 限制
+        const bearCase = await callChatGPT(bearPrompt);
         return { bullCase, bearCase };
     } catch (error) {
+        console.error('辯論分析錯誤:', error);
         return { bullCase: '[多頭分析失敗]', bearCase: '[空頭分析失敗]' };
     }
 }
@@ -472,7 +473,7 @@ async function runPortfolioManager(agentResults, debate, risk, market, stock) {
     }
 }
 
-async function callChatGPT(prompt) {
+async function callChatGPT(prompt, retries = 3) {
     // 優先從 localStorage 讀取 API Key
     let apiKey = getApiKey();
 
@@ -487,39 +488,66 @@ async function callChatGPT(prompt) {
 
     const model = getModel();
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-            model: model,
-            messages: [
-                { role: 'system', content: '你是專業的投資分析AI。' },
-                { role: 'user', content: prompt }
-            ],
-            temperature: 0.7,
-            max_tokens: 2000
-        })
-    });
+    // 重試機制
+    for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [
+                        { role: 'system', content: '你是專業的投資分析AI。' },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 2000
+                })
+            });
 
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`API 調用失敗: ${error.error?.message || response.statusText}`);
+            if (!response.ok) {
+                const error = await response.json();
+
+                // 如果是 429 速率限制錯誤，使用指數退避重試
+                if (response.status === 429 && attempt < retries - 1) {
+                    const waitTime = Math.pow(2, attempt) * 2000; // 2s, 4s, 8s
+                    console.log(`⏳ 速率限制，等待 ${waitTime/1000} 秒後重試... (嘗試 ${attempt + 1}/${retries})`);
+                    await sleep(waitTime);
+                    continue;
+                }
+
+                // 其他錯誤或最後一次重試失敗
+                throw new Error(`API 調用失敗: ${error.error?.message || response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data.choices[0].message.content;
+
+        } catch (error) {
+            // 如果是網路錯誤且還有重試次數
+            if (attempt < retries - 1 && (error.name === 'TypeError' || error.message.includes('Failed to fetch'))) {
+                const waitTime = 2000;
+                console.log(`🔄 網路錯誤，${waitTime/1000} 秒後重試... (嘗試 ${attempt + 1}/${retries})`);
+                await sleep(waitTime);
+                continue;
+            }
+
+            // 最後一次重試或其他錯誤
+            throw error;
+        }
     }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
 }
 
 // ===== 計算 AI 評分 =====
 function calculateAIScore(agentResults, decision) {
-    // 從各個分析師的回應中提取評分
+    // 從各個分析師的回應中提取評分，處理可能的 undefined 或錯誤訊息
     const scores = {
-        technical: extractScore(agentResults.technical),
-        fundamental: extractScore(agentResults.fundamental),
-        sentiment: extractScore(agentResults.sentiment)
+        technical: agentResults.technical ? extractScore(agentResults.technical) : 5,
+        fundamental: agentResults.fundamental ? extractScore(agentResults.fundamental) : 5,
+        sentiment: agentResults.sentiment ? extractScore(agentResults.sentiment) : 5
     };
 
     // 計算平均分
@@ -537,6 +565,11 @@ function calculateAIScore(agentResults, decision) {
 }
 
 function extractScore(text) {
+    // 檢查輸入是否有效
+    if (!text || typeof text !== 'string') {
+        return 5; // 默認值
+    }
+
     // 嘗試從文本中提取評分（1-10）
     const patterns = [
         /評分[：:]\s*(\d+(?:\.\d+)?)/i,
@@ -636,9 +669,21 @@ function displaySummary() {
         elements.riskScore.textContent = `${parsed.riskScore}%`;
         elements.riskChange.textContent = `${parsed.riskChange >= 0 ? '↑' : '↓'} ${Math.abs(parsed.riskChange)}%`;
         elements.targetPrice.textContent = parsed.targetPrice;
-    }
 
-    elements.aiReasoningContent.innerHTML = `<pre style="white-space: pre-wrap; line-height: 1.8;">${decision}</pre>`;
+        // 美化顯示推理內容
+        elements.aiReasoningContent.innerHTML = `
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; line-height: 1.8;">
+                <p style="margin: 0; color: #333; font-size: 15px;">${parsed.reasoning}</p>
+            </div>
+        `;
+    } else {
+        // 如果無法解析 JSON，使用 formatContent 處理整個內容
+        elements.aiReasoningContent.innerHTML = `
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; line-height: 1.8;">
+                ${formatContent(decision)}
+            </div>
+        `;
+    }
 }
 
 function displayDetailReport() {
@@ -665,8 +710,29 @@ function displayDetailReport() {
 
 function formatContent(text) {
     if (!text) return '<p>暫無數據</p>';
-    let formatted = text.replace(/\n/g, '<br>');
-    formatted = formatted.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>');
+
+    // 移除 JSON 代碼塊標記
+    let formatted = text.replace(/```json\s*/g, '');
+    formatted = formatted.replace(/```\s*/g, '');
+
+    // 處理 Markdown 標題
+    formatted = formatted.replace(/^####\s+(.+)$/gm, '<h4 style="color: #1e88e5; margin-top: 20px; margin-bottom: 10px;">$1</h4>');
+    formatted = formatted.replace(/^###\s+(.+)$/gm, '<h3 style="color: #1976d2; margin-top: 20px; margin-bottom: 10px;">$1</h3>');
+    formatted = formatted.replace(/^##\s+(.+)$/gm, '<h2 style="color: #1565c0; margin-top: 20px; margin-bottom: 10px;">$1</h2>');
+    formatted = formatted.replace(/^#\s+(.+)$/gm, '<h1 style="color: #0d47a1; margin-top: 20px; margin-bottom: 10px;">$1</h1>');
+
+    // 處理粗體文字
+    formatted = formatted.replace(/\*\*([^\*]+)\*\*/g, '<strong style="color: #1e88e5;">$1</strong>');
+
+    // 處理有序列表（1. 2. 3.）
+    formatted = formatted.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin-left: 20px; margin-bottom: 8px;">$1. $2</div>');
+
+    // 處理無序列表（- 或 *）
+    formatted = formatted.replace(/^[-*]\s+(.+)$/gm, '<div style="margin-left: 20px; margin-bottom: 8px;">• $1</div>');
+
+    // 處理換行
+    formatted = formatted.replace(/\n/g, '<br>');
+
     return formatted;
 }
 
@@ -963,11 +1029,18 @@ function checkAPIStatus() {
     const apiKey = getApiKey();
 
     // 同時檢查 localStorage 和 CONFIG
-    const hasApiKey = apiKey || (typeof CONFIG !== 'undefined' && CONFIG.OPENAI_API_KEY && CONFIG.OPENAI_API_KEY !== 'your-api-key-here');
+    const hasLocalStorageKey = !!apiKey;
+    const hasConfigKey = typeof CONFIG !== 'undefined' && CONFIG.OPENAI_API_KEY && CONFIG.OPENAI_API_KEY !== 'your-api-key-here';
+    const hasApiKey = hasLocalStorageKey || hasConfigKey;
 
     if (hasApiKey) {
         statusDot.style.background = '#4caf50';
-        statusText.textContent = 'API 已連接';
+        // 顯示 API Key 來源
+        if (hasLocalStorageKey) {
+            statusText.textContent = 'API 已連接';
+        } else {
+            statusText.textContent = 'API 已連接 (config.js)';
+        }
     } else {
         statusDot.style.background = '#f44336';
         statusText.textContent = 'API 未設置';
@@ -1011,8 +1084,18 @@ function updateApiKeyStatus() {
     const apiKeyStatus = elements.apiKeyStatus;
     const apiKey = getApiKey();
 
-    if (apiKey) {
-        apiKeyStatus.textContent = '已設定';
+    // 同時檢查 localStorage 和 CONFIG，與 checkAPIStatus() 保持一致
+    const hasLocalStorageKey = !!apiKey;
+    const hasConfigKey = typeof CONFIG !== 'undefined' && CONFIG.OPENAI_API_KEY && CONFIG.OPENAI_API_KEY !== 'your-api-key-here';
+    const hasApiKey = hasLocalStorageKey || hasConfigKey;
+
+    if (hasApiKey) {
+        // 顯示 API Key 來源
+        if (hasLocalStorageKey) {
+            apiKeyStatus.textContent = '已設定';
+        } else {
+            apiKeyStatus.textContent = '已設定 (使用 config.js)';
+        }
         apiKeyStatus.classList.add('connected');
     } else {
         apiKeyStatus.textContent = '未設定';
@@ -1024,8 +1107,15 @@ function initSettings() {
     // 加載 API Key 狀態
     updateApiKeyStatus();
 
-    // 加載已保存的 API Key（只顯示前幾個字符）
-    const apiKey = getApiKey();
+    // 加載已保存的 API Key
+    let apiKey = getApiKey();
+
+    // 如果 localStorage 沒有，檢查 config.js
+    if (!apiKey && typeof CONFIG !== 'undefined' && CONFIG.OPENAI_API_KEY && CONFIG.OPENAI_API_KEY !== 'your-api-key-here') {
+        apiKey = CONFIG.OPENAI_API_KEY;
+    }
+
+    // 顯示 API Key（完整顯示，因為有顯示/隱藏按鈕）
     if (apiKey && elements.apiKeyInput) {
         elements.apiKeyInput.value = apiKey;
     }
