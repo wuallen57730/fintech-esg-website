@@ -1250,7 +1250,12 @@ function renderScoreDistributionChart() {
         scoreDistributionChartInstance.destroy();
     }
 
-    const scores = watchlist.map(item => item.aiScore);
+    if (watchlist.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
+        return;
+    }
+
+    const scores = watchlist.map(item => item.aiScore || 0);
     const bins = [0, 0, 0, 0, 0]; // 0-2, 2-4, 4-6, 6-8, 8-10
 
     scores.forEach(score => {
@@ -1291,12 +1296,24 @@ function renderRecommendationChart() {
         recommendationChartInstance.destroy();
     }
 
-    const recs = analysisHistory.map(item => extractRecommendation(item.decision));
+    if (analysisHistory.length === 0) {
+        displayEmptyState(ctx, '暫無分析記錄數據');
+        return;
+    }
+
+    const recs = analysisHistory
+        .filter(item => item.decision)
+        .map(item => extractRecommendation(item.decision));
     const counts = {};
 
     recs.forEach(rec => {
         counts[rec] = (counts[rec] || 0) + 1;
     });
+
+    if (Object.keys(counts).length === 0) {
+        displayEmptyState(ctx, '暫無分析記錄數據');
+        return;
+    }
 
     recommendationChartInstance = new Chart(ctx, {
         type: 'doughnut',
@@ -1322,6 +1339,21 @@ function renderRecommendationChart() {
 
 // ===== 新增圖表渲染函數 =====
 
+/**
+ * 在 canvas 上顯示空狀態訊息
+ */
+function displayEmptyState(ctx, message = '暫無數據') {
+    if (!ctx) return;
+    const canvas = ctx.canvas || ctx;
+    const context = canvas.getContext('2d');
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.font = '14px Arial';
+    context.fillStyle = '#999';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(message, canvas.width / 2, canvas.height / 2);
+}
+
 // 1. AI評分時間趨勢線圖
 function renderScoreTrendChart() {
     const ctx = document.getElementById('scoreTrendChart');
@@ -1332,10 +1364,18 @@ function renderScoreTrendChart() {
     }
 
     if (analysisHistory.length === 0) {
+        displayEmptyState(ctx, '暫無分析記錄數據');
         return;
     }
 
-    const scoresByDate = groupScoresByDate(analysisHistory);
+    // 性能優化：限制為最近90天的數據
+    const recentHistory = filterByTimeRange(analysisHistory, 90);
+    const scoresByDate = groupScoresByDate(recentHistory);
+
+    if (scoresByDate.length === 0) {
+        displayEmptyState(ctx, '暫無分析記錄數據');
+        return;
+    }
 
     scoreTrendChartInstance = new Chart(ctx, {
         type: 'line',
@@ -1433,6 +1473,7 @@ function renderAnalysisFrequencyChart() {
     }
 
     if (analysisHistory.length === 0) {
+        displayEmptyState(ctx, '暫無分析記錄數據');
         return;
     }
 
@@ -1440,8 +1481,10 @@ function renderAnalysisFrequencyChart() {
     const countByDate = {};
 
     analysisHistory.forEach(item => {
-        const date = item.timestamp.split('T')[0];
-        countByDate[date] = (countByDate[date] || 0) + 1;
+        const date = item.timestamp ? item.timestamp.split('T')[0] : null;
+        if (date) {
+            countByDate[date] = (countByDate[date] || 0) + 1;
+        }
     });
 
     const data = last30Days.map(date => countByDate[date] || 0);
@@ -1483,18 +1526,24 @@ function renderMarketDistributionChart() {
     }
 
     if (watchlist.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
         return;
     }
 
     const marketCounts = { TW: 0, US: 0, HK: 0 };
     watchlist.forEach(item => {
-        if (marketCounts[item.market] !== undefined) {
+        if (item.market && marketCounts[item.market] !== undefined) {
             marketCounts[item.market]++;
         }
     });
 
     const markets = Object.keys(marketCounts).filter(m => marketCounts[m] > 0);
     const counts = markets.map(m => marketCounts[m]);
+
+    if (markets.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
+        return;
+    }
 
     marketDistributionChartInstance = new Chart(ctx, {
         type: 'doughnut',
@@ -1528,11 +1577,17 @@ function renderMarketAvgScoreChart() {
     }
 
     if (watchlist.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
         return;
     }
 
     const marketScores = calculateMarketAvgScores();
     const markets = ['TW', 'US', 'HK'].filter(m => marketScores[m] > 0);
+
+    if (markets.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
+        return;
+    }
 
     marketAvgScoreChartInstance = new Chart(ctx, {
         type: 'bar',
@@ -1575,6 +1630,7 @@ function renderMarketRecommendationChart() {
     }
 
     if (analysisHistory.length === 0) {
+        displayEmptyState(ctx, '暫無分析記錄數據');
         return;
     }
 
@@ -1585,6 +1641,7 @@ function renderMarketRecommendationChart() {
     };
 
     analysisHistory.forEach(item => {
+        if (!item.decision || !item.market) return;
         const rec = extractRecommendation(item.decision);
         if (marketRecs[item.market]) {
             if (rec.includes('買')) marketRecs[item.market].buy++;
@@ -1596,6 +1653,11 @@ function renderMarketRecommendationChart() {
     const markets = ['TW', 'US', 'HK'].filter(m =>
         marketRecs[m].buy + marketRecs[m].hold + marketRecs[m].sell > 0
     );
+
+    if (markets.length === 0) {
+        displayEmptyState(ctx, '暫無分析記錄數據');
+        return;
+    }
 
     marketRecommendationChartInstance = new Chart(ctx, {
         type: 'bar',
@@ -1642,10 +1704,16 @@ function renderDimensionRadarChart() {
     }
 
     if (watchlist.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
         return;
     }
 
     const avgDimensions = calculateAvgDimensions();
+
+    if (!avgDimensions || (avgDimensions.technical === 0 && avgDimensions.fundamental === 0 && avgDimensions.sentiment === 0)) {
+        displayEmptyState(ctx, '暫無多維度評分數據');
+        return;
+    }
 
     dimensionRadarChartInstance = new Chart(ctx, {
         type: 'radar',
@@ -1689,6 +1757,7 @@ function renderDimensionDistributionChart() {
     }
 
     if (watchlist.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
         return;
     }
 
@@ -1754,17 +1823,24 @@ function renderRiskDistributionChart() {
     }
 
     if (watchlist.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
         return;
     }
 
     const riskLevels = { high: 0, medium: 0, low: 0 };
 
     watchlist.forEach(item => {
-        const riskScore = extractRiskScore(item.data?.risk || '');
+        if (!item.data?.risk) return;
+        const riskScore = extractRiskScore(item.data.risk);
         if (riskScore >= 7) riskLevels.high++;
         else if (riskScore >= 4) riskLevels.medium++;
         else riskLevels.low++;
     });
+
+    if (riskLevels.high === 0 && riskLevels.medium === 0 && riskLevels.low === 0) {
+        displayEmptyState(ctx, '暫無風險評估數據');
+        return;
+    }
 
     riskDistributionChartInstance = new Chart(ctx, {
         type: 'doughnut',
@@ -1798,10 +1874,16 @@ function renderRiskReturnScatterChart() {
     }
 
     if (watchlist.length === 0) {
+        displayEmptyState(ctx, '觀察清單暫無股票');
         return;
     }
 
     const scatterData = prepareRiskReturnData();
+
+    if (!scatterData || scatterData.length === 0) {
+        displayEmptyState(ctx, '暫無風險評估數據');
+        return;
+    }
 
     riskReturnScatterChartInstance = new Chart(ctx, {
         type: 'scatter',
@@ -1920,21 +2002,25 @@ function getNestedValue(obj, path) {
  * 按時間範圍過濾分析歷史
  */
 function filterByTimeRange(history, days) {
+    if (!history || !Array.isArray(history)) return [];
     if (days === 'all') return history;
 
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
 
-    return history.filter(item => new Date(item.timestamp) >= cutoff);
+    return history.filter(item => item.timestamp && new Date(item.timestamp) >= cutoff);
 }
 
 /**
  * 按日期分組評分數據
  */
 function groupScoresByDate(history) {
+    if (!history || !Array.isArray(history)) return [];
+
     const grouped = {};
 
     history.forEach(item => {
+        if (!item.timestamp) return;
         const date = item.timestamp.split('T')[0];
         if (!grouped[date]) {
             grouped[date] = {
@@ -1966,7 +2052,9 @@ function groupScoresByDate(history) {
  * 按股票分組
  */
 function groupByStock(history) {
+    if (!history || !Array.isArray(history)) return {};
     return history.reduce((acc, item) => {
+        if (!item.market || !item.stock) return acc;
         const key = `${item.market}:${item.stock}`;
         if (!acc[key]) acc[key] = [];
         acc[key].push(item);
@@ -1978,7 +2066,9 @@ function groupByStock(history) {
  * 按市場分組
  */
 function groupByMarket(data) {
+    if (!data || !Array.isArray(data)) return {};
     return data.reduce((acc, item) => {
+        if (!item.market) return acc;
         if (!acc[item.market]) acc[item.market] = [];
         acc[item.market].push(item);
         return acc;
@@ -1989,11 +2079,14 @@ function groupByMarket(data) {
  * 準備風險-收益散點圖數據
  */
 function prepareRiskReturnData() {
-    return watchlist.map(item => ({
-        x: item.aiScore || 0,
-        y: extractRiskScore(item.data?.risk || ''),
-        label: item.stock
-    }));
+    if (!watchlist || !Array.isArray(watchlist)) return [];
+    return watchlist
+        .filter(item => item.stock && item.aiScore !== undefined && item.data?.risk)
+        .map(item => ({
+            x: item.aiScore || 0,
+            y: extractRiskScore(item.data.risk),
+            label: item.stock
+        }));
 }
 
 /**
