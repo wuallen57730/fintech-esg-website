@@ -1001,9 +1001,18 @@ function renderDashboard() {
     renderRecommendationChart();
 }
 
+// 儲存圖表實例
+let scoreDistributionChartInstance = null;
+let recommendationChartInstance = null;
+
 function renderScoreDistributionChart() {
     const ctx = document.getElementById('scoreDistributionChart');
     if (!ctx) return;
+
+    // 銷毀舊的圖表實例
+    if (scoreDistributionChartInstance) {
+        scoreDistributionChartInstance.destroy();
+    }
 
     const scores = watchlist.map(item => item.aiScore);
     const bins = [0, 0, 0, 0, 0]; // 0-2, 2-4, 4-6, 6-8, 8-10
@@ -1013,7 +1022,7 @@ function renderScoreDistributionChart() {
         bins[index]++;
     });
 
-    new Chart(ctx, {
+    scoreDistributionChartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: ['0-2', '2-4', '4-6', '6-8', '8-10'],
@@ -1041,6 +1050,11 @@ function renderRecommendationChart() {
     const ctx = document.getElementById('recommendationChart');
     if (!ctx) return;
 
+    // 銷毀舊的圖表實例
+    if (recommendationChartInstance) {
+        recommendationChartInstance.destroy();
+    }
+
     const recs = analysisHistory.map(item => extractRecommendation(item.decision));
     const counts = {};
 
@@ -1048,7 +1062,7 @@ function renderRecommendationChart() {
         counts[rec] = (counts[rec] || 0) + 1;
     });
 
-    new Chart(ctx, {
+    recommendationChartInstance = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: Object.keys(counts),
