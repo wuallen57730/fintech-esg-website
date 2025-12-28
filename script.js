@@ -483,10 +483,17 @@ async function runAnalysis(market, stock, date, depth, agents) {
     // 計算 AI 評分
     const aiScore = calculateAIScore(agentResults, decision);
 
+    // 確保 market 不是 AUTO（以防萬一）
+    let finalMarket = market;
+    if (finalMarket === 'AUTO') {
+        finalMarket = detectMarketFromCode(stock) || currentMarket || 'TW';
+        currentMarket = finalMarket; // 同步更新
+    }
+
     // 保存數據
     analysisData = {
         stock,
-        market,
+        market: finalMarket, // 使用最終確認的市場
         date,
         depth,
         agentResults,
@@ -977,11 +984,26 @@ function renderWatchlist() {
     elements.watchlistEmpty.style.display = 'none';
     elements.watchlistContainer.style.display = 'grid';
 
-    elements.watchlistContainer.innerHTML = watchlist.map((item, index) => `
+    elements.watchlistContainer.innerHTML = watchlist.map((item, index) => {
+        // 如果 market 是 AUTO，嘗試從代碼重新識別
+        let displayMarket = item.market;
+        if (displayMarket === 'AUTO') {
+            const detected = detectMarketFromCode(item.stock);
+            displayMarket = detected || 'TW'; // 預設台股
+        }
+
+        // 獲取市場圖標
+        const marketIcon = displayMarket === 'TW' ? '🇹🇼' :
+                          displayMarket === 'US' ? '🇺🇸' :
+                          displayMarket === 'HK' ? '🇭🇰' : '📊';
+
+        const marketName = getMarketName(displayMarket);
+
+        return `
         <div class="watchlist-item">
             <div class="watchlist-header">
                 <div>
-                    <div class="watchlist-title">${item.market}: ${item.stock}</div>
+                    <div class="watchlist-title">${marketIcon} ${marketName}: ${item.stock}</div>
                     <div class="watchlist-info">加入日期: ${new Date(item.addedDate).toLocaleDateString()}</div>
                 </div>
                 <div class="watchlist-actions">
@@ -994,7 +1016,8 @@ function renderWatchlist() {
                 <strong>建議:</strong> ${item.recommendation}
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function removeFromWatchlist(index) {
@@ -1063,10 +1086,25 @@ function renderHistory() {
     elements.historyEmpty.style.display = 'none';
     elements.historyContainer.style.display = 'flex';
 
-    elements.historyContainer.innerHTML = analysisHistory.map((item, index) => `
+    elements.historyContainer.innerHTML = analysisHistory.map((item, index) => {
+        // 如果 market 是 AUTO，嘗試從代碼重新識別
+        let displayMarket = item.market;
+        if (displayMarket === 'AUTO') {
+            const detected = detectMarketFromCode(item.stock);
+            displayMarket = detected || 'TW'; // 預設台股
+        }
+
+        // 獲取市場圖標
+        const marketIcon = displayMarket === 'TW' ? '🇹🇼' :
+                          displayMarket === 'US' ? '🇺🇸' :
+                          displayMarket === 'HK' ? '🇭🇰' : '📊';
+
+        const marketName = getMarketName(displayMarket);
+
+        return `
         <div class="history-item" onclick="viewHistoryItem(${index})">
             <div class="history-info">
-                <div class="history-title">${item.market}: ${item.stock}</div>
+                <div class="history-title">${marketIcon} ${marketName}: ${item.stock}</div>
                 <div class="history-meta">
                     ${new Date(item.timestamp).toLocaleString()} | 深度: ${item.depth}級
                 </div>
@@ -1077,7 +1115,8 @@ function renderHistory() {
             </div>
             <button class="icon-btn" onclick="event.stopPropagation(); removeHistory(${index})" title="刪除">🗑️</button>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function viewHistoryItem(index) {
