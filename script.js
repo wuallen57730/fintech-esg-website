@@ -399,19 +399,8 @@ async function startAnalysis() {
         return;
     }
 
-    // 如果通過名稱找到，顯示確認訊息
-    if (stockValidation.matchType === 'name') {
-        showNotification(
-            `已找到：${stockValidation.stock.code} - ${stockValidation.stock.name}`,
-            'success',
-            3000
-        );
-        // 自動填入代碼
-        elements.stockInput.value = stockValidation.stock.code;
-    }
-
-    // 直接進行分析
-    proceedWithAnalysis(market, stockValidation.stock.code || stock, date, depth, selectedAgents);
+    // 直接進行分析（只使用代碼）
+    proceedWithAnalysis(market, stock, date, depth, selectedAgents);
 }
 
 async function proceedWithAnalysis(market, stock, date, depth, selectedAgents) {
@@ -2169,13 +2158,9 @@ function searchStocksInMarket(query, market) {
         ? fullStockDatabase[market]
         : STOCK_DATABASE[market] || [];
 
+    // 只搜尋代碼，不搜尋名稱
     return stocks.filter(stock => {
-        const codeMatch = stock.code.includes(query);
-        const nameMatch = stock.name.toLowerCase().includes(query.toLowerCase());
-        const nameEnMatch = stock.nameEn && stock.nameEn.toLowerCase().includes(query.toLowerCase());
-        const nameCnMatch = stock.nameCn && stock.nameCn.includes(query);
-
-        return codeMatch || nameMatch || nameEnMatch || nameCnMatch;
+        return stock.code.includes(query);
     }).slice(0, 5); // 每個市場最多5個
 }
 
@@ -2311,21 +2296,23 @@ function checkStockExistsInMarket(code, market) {
     return stocks.some(stock => stock.code === code);
 }
 
-// 驗證股票代碼是否存在（支援代碼和名稱搜尋）
+// 驗證股票代碼是否存在（僅支援代碼搜尋）
 function validateStockExists(input, market) {
     const cleanInput = input.trim().toUpperCase();
-    const inputLower = input.toLowerCase();
+
+    // 移除可能的後綴
+    const codeOnly = cleanInput.split('.')[0];
 
     // 如果市場是 AUTO，需要同時檢查所有市場
     const marketsToCheck = market === 'AUTO' ? ['TW', 'US'] : [market];
 
-    // 先嘗試代碼匹配（優先級最高）
+    // 只檢查代碼匹配
     for (const mkt of marketsToCheck) {
         const stocks = (fullStockDatabase[mkt] && fullStockDatabase[mkt].length > 0)
             ? fullStockDatabase[mkt]
             : STOCK_DATABASE[mkt] || [];
 
-        const codeMatch = stocks.find(stock => stock.code === cleanInput || stock.code === cleanInput.split('.')[0]);
+        const codeMatch = stocks.find(stock => stock.code === codeOnly);
 
         if (codeMatch) {
             return {
@@ -2337,69 +2324,9 @@ function validateStockExists(input, market) {
         }
     }
 
-    // 如果沒有代碼匹配，再檢查名稱匹配
-    // 收集所有市場的名稱匹配結果
-    const allNameMatches = [];
-
-    for (const mkt of marketsToCheck) {
-        const stocks = (fullStockDatabase[mkt] && fullStockDatabase[mkt].length > 0)
-            ? fullStockDatabase[mkt]
-            : STOCK_DATABASE[mkt] || [];
-
-        stocks.forEach(stock => {
-            const nameLower = stock.name.toLowerCase();
-            const nameEnLower = stock.nameEn ? stock.nameEn.toLowerCase() : '';
-            const nameCnLower = stock.nameCn ? stock.nameCn.toLowerCase() : '';
-
-            // 完全匹配
-            if (nameLower === inputLower || nameEnLower === inputLower || nameCnLower === inputLower) {
-                allNameMatches.push({
-                    market: mkt,
-                    stock: stock,
-                    matchQuality: 'exact', // 完全匹配
-                    matchField: nameLower === inputLower ? 'name' :
-                               nameEnLower === inputLower ? 'nameEn' : 'nameCn'
-                });
-            }
-        });
-    }
-
-    // 如果有名稱匹配，選擇最佳匹配
-    if (allNameMatches.length > 0) {
-        // 優先選擇匹配中文名稱的美股（nameCn），因為中文通常指美股公司的中文譯名
-        const cnMatch = allNameMatches.find(m => m.matchField === 'nameCn');
-        if (cnMatch) {
-            return {
-                exists: true,
-                market: cnMatch.market,
-                stock: cnMatch.stock,
-                matchType: 'name'
-            };
-        }
-
-        // 其次選擇匹配英文名稱的
-        const enMatch = allNameMatches.find(m => m.matchField === 'nameEn');
-        if (enMatch) {
-            return {
-                exists: true,
-                market: enMatch.market,
-                stock: enMatch.stock,
-                matchType: 'name'
-            };
-        }
-
-        // 最後返回第一個匹配
-        return {
-            exists: true,
-            market: allNameMatches[0].market,
-            stock: allNameMatches[0].stock,
-            matchType: 'name'
-        };
-    }
-
     return {
         exists: false,
-        message: `找不到股票代碼或名稱「${input}」`
+        message: `找不到股票代碼「${codeOnly}」`
     };
 }
 
@@ -2591,7 +2518,7 @@ function showStockNotFoundDialog(stockCode, market) {
 
             <div style="background: #ffebee; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
                 <div style="margin-bottom: 10px;">
-                    <strong style="color: #c62828;">輸入的代碼/名稱：</strong>
+                    <strong style="color: #c62828;">輸入的代碼：</strong>
                     <span style="color: #333; font-size: 18px; font-weight: bold;">${stockCode}</span>
                 </div>
                 <div>
@@ -2603,10 +2530,12 @@ function showStockNotFoundDialog(stockCode, market) {
             <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                 <div style="font-size: 14px; color: #e65100; line-height: 1.8;">
                     <strong>📌 可能的原因：</strong><br>
-                    • 代碼輸入錯誤<br>
+                    • 股票代碼輸入錯誤<br>
                     • 該股票不在我們的資料庫中<br>
                     • 選擇的市場不正確<br>
-                    • 使用了錯誤的市場後綴（如 .TW, .US）
+                    • 使用了錯誤的市場後綴（如 .TW, .US）<br><br>
+                    <strong>💡 提示：</strong>僅支援股票代碼搜尋<br>
+                    （如：2330、AAPL、00878）
                 </div>
             </div>
 
