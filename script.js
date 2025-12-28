@@ -390,8 +390,28 @@ async function startAnalysis() {
         }
     }
 
+    // ===== 驗證代碼是否存在 =====
+    const stockValidation = validateStockExists(stock, market);
+
+    if (!stockValidation.exists) {
+        // 顯示找不到股票的錯誤對話框
+        showStockNotFoundDialog(stock, market);
+        return;
+    }
+
+    // 如果通過名稱找到，顯示確認訊息
+    if (stockValidation.matchType === 'name') {
+        showNotification(
+            `已找到：${stockValidation.stock.code} - ${stockValidation.stock.name}`,
+            'success',
+            3000
+        );
+        // 自動填入代碼
+        elements.stockInput.value = stockValidation.stock.code;
+    }
+
     // 直接進行分析
-    proceedWithAnalysis(market, stock, date, depth, selectedAgents);
+    proceedWithAnalysis(market, stockValidation.stock.code || stock, date, depth, selectedAgents);
 }
 
 async function proceedWithAnalysis(market, stock, date, depth, selectedAgents) {
@@ -2193,12 +2213,115 @@ function displaySuggestions(suggestions, suggestionBox, stockInput) {
 
 // ===== 市場與代碼驗證 =====
 function detectMarketFromCode(code) {
-    const isTaiwanFormat = /^\d{4}$/.test(code);  // 4位數字
-    const isUSFormat = /^[A-Z]{1,5}$/.test(code); // 1-5個字母
+    // 移除可能的後綴並分析
+    let cleanCode = code;
+    let explicitMarket = null;
 
-    if (isTaiwanFormat) return 'TW';
-    if (isUSFormat) return 'US';
+    // 方案 D: 後綴識別
+    if (code.includes('.')) {
+        const parts = code.split('.');
+        cleanCode = parts[0];
+        const suffix = parts[1] ? parts[1].toUpperCase() : '';
+
+        if (suffix === 'TW') explicitMarket = 'TW';
+        else if (suffix === 'US') explicitMarket = 'US';
+        else if (suffix === 'HK') explicitMarket = 'HK';
+    }
+
+    // 如果有明確後綴，直接返回
+    if (explicitMarket) {
+        return explicitMarket;
+    }
+
+    // 方案 A: 擴展識別規則
+    const isTaiwanFormat = /^\d{4,6}$/.test(cleanCode);  // 4-6位數字（涵蓋 ETF）
+    const isUSFormat = /^[A-Z]{1,5}$/.test(cleanCode);    // 1-5個字母
+    const isHKFormat = /^\d{4}$/.test(cleanCode);         // 4位數字（港股）
+
+    // 5-6位數字 → 台股 ETF
+    if (cleanCode.length >= 5 && isTaiwanFormat) {
+        return 'TW';
+    }
+
+    // 字母 → 美股
+    if (isUSFormat) {
+        return 'US';
+    }
+
+    // 4位數字 → 方案 C: 優先級策略（台股 > 港股）
+    if (isHKFormat) {
+        // 先檢查台股資料庫是否存在
+        const existsInTW = checkStockExistsInMarket(cleanCode, 'TW');
+        if (existsInTW) {
+            return 'TW';
+        }
+
+        // 再檢查港股（目前沒有港股資料庫，預設返回台股）
+        return 'TW';
+    }
+
     return null;
+}
+
+// 檢查代碼是否存在於指定市場資料庫
+function checkStockExistsInMarket(code, market) {
+    const stocks = (fullStockDatabase[market] && fullStockDatabase[market].length > 0)
+        ? fullStockDatabase[market]
+        : STOCK_DATABASE[market] || [];
+
+    return stocks.some(stock => stock.code === code);
+}
+
+// 驗證股票代碼是否存在（支援代碼和名稱搜尋）
+function validateStockExists(input, market) {
+    const cleanInput = input.trim().toUpperCase();
+
+    // 如果市場是 AUTO，需要同時檢查所有市場
+    const marketsToCheck = market === 'AUTO' ? ['TW', 'US'] : [market];
+
+    for (const mkt of marketsToCheck) {
+        const stocks = (fullStockDatabase[mkt] && fullStockDatabase[mkt].length > 0)
+            ? fullStockDatabase[mkt]
+            : STOCK_DATABASE[mkt] || [];
+
+        // 檢查代碼匹配
+        const codeMatch = stocks.find(stock => stock.code === cleanInput || stock.code === cleanInput.split('.')[0]);
+
+        if (codeMatch) {
+            return {
+                exists: true,
+                market: mkt,
+                stock: codeMatch,
+                matchType: 'code'
+            };
+        }
+
+        // 檢查名稱匹配
+        const nameMatch = stocks.find(stock => {
+            const nameLower = stock.name.toLowerCase();
+            const nameEnLower = stock.nameEn ? stock.nameEn.toLowerCase() : '';
+            const nameCnLower = stock.nameCn ? stock.nameCn.toLowerCase() : '';
+            const inputLower = input.toLowerCase();
+
+            return nameLower === inputLower ||
+                   nameEnLower === inputLower ||
+                   nameCnLower === inputLower;
+        });
+
+        if (nameMatch) {
+            return {
+                exists: true,
+                market: mkt,
+                stock: nameMatch,
+                matchType: 'name'
+            };
+        }
+    }
+
+    return {
+        exists: false,
+        message: `找不到股票代碼或名稱「${input}」`
+    };
 }
 
 function validateMarketMatch(selectedMarket, stockCode) {
@@ -2331,6 +2454,131 @@ function showMarketMismatchDialog(validation, stockCode, onConfirm) {
     // 點擊背景不關閉（強制選擇）
 }
 
+// ===== 股票不存在錯誤對話框 =====
+function showStockNotFoundDialog(stockCode, market) {
+    const dialog = document.createElement('div');
+    dialog.id = 'stock-not-found-dialog';
+    dialog.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10003;
+        animation: fadeIn 0.2s ease-out;
+    `;
+
+    // 獲取建議的相似股票
+    const suggestions = searchStocksInMarket(stockCode.substring(0, 3), market).slice(0, 5);
+    const suggestionsHTML = suggestions.length > 0
+        ? `
+        <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #e0e0e0;">
+            <h4 style="margin: 0 0 12px 0; color: #1976d2; font-size: 14px;">💡 您可能在找：</h4>
+            ${suggestions.map(s => `
+                <div style="
+                    padding: 8px 12px;
+                    margin-bottom: 8px;
+                    background: #f5f5f5;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                " onmouseover="this.style.background='#e3f2fd'" onmouseout="this.style.background='#f5f5f5'"
+                   onclick="selectSuggestedStock('${s.code}', '${market}')">
+                    <strong style="color: #1976d2;">${s.code}</strong> - ${s.name}
+                </div>
+            `).join('')}
+        </div>
+        `
+        : '';
+
+    dialog.innerHTML = `
+        <div style="
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 450px;
+            width: 90%;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            animation: scaleIn 0.3s ease-out;
+        ">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <div style="font-size: 64px; margin-bottom: 10px;">❌</div>
+                <h3 style="margin: 0; color: #f44336; font-size: 22px;">找不到股票</h3>
+            </div>
+
+            <div style="background: #ffebee; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <div style="margin-bottom: 10px;">
+                    <strong style="color: #c62828;">輸入的代碼/名稱：</strong>
+                    <span style="color: #333; font-size: 18px; font-weight: bold;">${stockCode}</span>
+                </div>
+                <div>
+                    <strong style="color: #c62828;">選擇的市場：</strong>
+                    <span style="color: #333; font-size: 16px;">${getMarketName(market)}</span>
+                </div>
+            </div>
+
+            <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <div style="font-size: 14px; color: #e65100; line-height: 1.8;">
+                    <strong>📌 可能的原因：</strong><br>
+                    • 代碼輸入錯誤<br>
+                    • 該股票不在我們的資料庫中<br>
+                    • 選擇的市場不正確<br>
+                    • 使用了錯誤的市場後綴（如 .TW, .US）
+                </div>
+            </div>
+
+            ${suggestionsHTML}
+
+            <div style="display: flex; gap: 12px; justify-content: center; margin-top: 25px;">
+                <button onclick="closeStockNotFoundDialog()" style="
+                    flex: 1;
+                    padding: 12px 20px;
+                    border: none;
+                    background: #1976d2;
+                    color: white;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-size: 15px;
+                    font-weight: bold;
+                    transition: all 0.2s;
+                " onmouseover="this.style.background='#1565c0'" onmouseout="this.style.background='#1976d2'">
+                    重新輸入
+                </button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    // 點擊背景關閉
+    dialog.onclick = (e) => {
+        if (e.target === dialog) {
+            dialog.remove();
+        }
+    };
+}
+
+function closeStockNotFoundDialog() {
+    const dialog = document.getElementById('stock-not-found-dialog');
+    if (dialog) {
+        dialog.remove();
+    }
+    // 聚焦到輸入框
+    elements.stockInput.focus();
+    elements.stockInput.select();
+}
+
+function selectSuggestedStock(code, market) {
+    closeStockNotFoundDialog();
+    elements.stockInput.value = code;
+    elements.marketSelect.value = market;
+    showNotification(`已選擇：${code}`, 'success', 2000);
+}
+
 // ===== 全局函數（供 HTML 調用）=====
 window.removeFromWatchlist = removeFromWatchlist;
 window.viewWatchlistItem = viewWatchlistItem;
@@ -2340,3 +2588,5 @@ window.updateCompareSelection = updateCompareSelection;
 window.cancelCompare = cancelCompare;
 window.confirmCompare = confirmCompare;
 window.viewStockDetail = viewStockDetail;
+window.closeStockNotFoundDialog = closeStockNotFoundDialog;
+window.selectSuggestedStock = selectSuggestedStock;
