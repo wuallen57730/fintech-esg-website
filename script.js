@@ -1211,28 +1211,35 @@ function updateExtendedStats() {
 function renderDashboard() {
     updateStats();
 
-    // 繪製原有圖表
+    // 繪製所有圖表
+    renderScoreTrendChart();
+    renderAnalysisFrequencyChart();
+    renderMarketDistributionChart();
+    renderMarketAvgScoreChart();
+    renderMarketRecommendationChart();
+    renderDimensionRadarChart();
+    renderDimensionDistributionChart();
+    renderRiskDistributionChart();
+    renderRiskReturnScatterChart();
     renderScoreDistributionChart();
     renderRecommendationChart();
 
-    // 繪製新增圖表（暫時註解，待實現）
-    // renderScoreTrendChart();
-    // renderAnalysisFrequencyChart();
-    // renderMarketDistributionChart();
-    // renderMarketAvgScoreChart();
-    // renderMarketRecommendationChart();
-    // renderDimensionRadarChart();
-    // renderDimensionDistributionChart();
-    // renderRiskDistributionChart();
-    // renderRiskReturnScatterChart();
-
-    // 渲染表格（暫時註解，待實現）
-    // renderAllTables();
+    // 渲染表格（待實現）
+    renderAllTables();
 }
 
 // 儲存圖表實例
 let scoreDistributionChartInstance = null;
 let recommendationChartInstance = null;
+let scoreTrendChartInstance = null;
+let analysisFrequencyChartInstance = null;
+let marketDistributionChartInstance = null;
+let marketAvgScoreChartInstance = null;
+let marketRecommendationChartInstance = null;
+let dimensionRadarChartInstance = null;
+let dimensionDistributionChartInstance = null;
+let riskDistributionChartInstance = null;
+let riskReturnScatterChartInstance = null;
 
 function renderScoreDistributionChart() {
     const ctx = document.getElementById('scoreDistributionChart');
@@ -1308,6 +1315,529 @@ function renderRecommendationChart() {
             responsive: true,
             plugins: {
                 legend: { position: 'bottom' }
+            }
+        }
+    });
+}
+
+// ===== 新增圖表渲染函數 =====
+
+// 1. AI評分時間趨勢線圖
+function renderScoreTrendChart() {
+    const ctx = document.getElementById('scoreTrendChart');
+    if (!ctx) return;
+
+    if (scoreTrendChartInstance) {
+        scoreTrendChartInstance.destroy();
+    }
+
+    if (analysisHistory.length === 0) {
+        return;
+    }
+
+    const scoresByDate = groupScoresByDate(analysisHistory);
+
+    scoreTrendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: scoresByDate.map(d => d.date),
+            datasets: [
+                {
+                    label: '總評分',
+                    data: scoresByDate.map(d => d.overall),
+                    borderColor: '#1e88e5',
+                    backgroundColor: 'rgba(30, 136, 229, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: '技術面',
+                    data: scoresByDate.map(d => d.technical),
+                    borderColor: '#43a047',
+                    backgroundColor: 'rgba(67, 160, 71, 0.1)',
+                    tension: 0.4,
+                    hidden: true
+                },
+                {
+                    label: '基本面',
+                    data: scoresByDate.map(d => d.fundamental),
+                    borderColor: '#fb8c00',
+                    backgroundColor: 'rgba(251, 140, 0, 0.1)',
+                    tension: 0.4,
+                    hidden: true
+                },
+                {
+                    label: '情緒面',
+                    data: scoresByDate.map(d => d.sentiment),
+                    borderColor: '#e53935',
+                    backgroundColor: 'rgba(229, 57, 53, 0.1)',
+                    tension: 0.4,
+                    hidden: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 10,
+                    title: { display: true, text: 'AI評分' }
+                },
+                x: {
+                    title: { display: true, text: '日期' }
+                }
+            }
+        }
+    });
+}
+
+// 圖表線條切換功能
+function toggleChartLine(dimension, visible) {
+    if (!scoreTrendChartInstance) return;
+
+    const datasetIndex = {
+        'overall': 0,
+        'technical': 1,
+        'fundamental': 2,
+        'sentiment': 3
+    }[dimension];
+
+    if (datasetIndex !== undefined) {
+        scoreTrendChartInstance.data.datasets[datasetIndex].hidden = !visible;
+        scoreTrendChartInstance.update();
+    }
+}
+
+// 2. 分析頻率柱狀圖
+function renderAnalysisFrequencyChart() {
+    const ctx = document.getElementById('analysisFrequencyChart');
+    if (!ctx) return;
+
+    if (analysisFrequencyChartInstance) {
+        analysisFrequencyChartInstance.destroy();
+    }
+
+    if (analysisHistory.length === 0) {
+        return;
+    }
+
+    const last30Days = getLast30Days();
+    const countByDate = {};
+
+    analysisHistory.forEach(item => {
+        const date = item.timestamp.split('T')[0];
+        countByDate[date] = (countByDate[date] || 0) + 1;
+    });
+
+    const data = last30Days.map(date => countByDate[date] || 0);
+
+    analysisFrequencyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: last30Days.map(formatDateShort),
+            datasets: [{
+                label: '分析次數',
+                data: data,
+                backgroundColor: 'rgba(30, 136, 229, 0.7)',
+                borderColor: 'rgba(30, 136, 229, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 }
+                }
+            }
+        }
+    });
+}
+
+// 3. 市場分布餅圖
+function renderMarketDistributionChart() {
+    const ctx = document.getElementById('marketDistributionChart');
+    if (!ctx) return;
+
+    if (marketDistributionChartInstance) {
+        marketDistributionChartInstance.destroy();
+    }
+
+    if (watchlist.length === 0) {
+        return;
+    }
+
+    const marketCounts = { TW: 0, US: 0, HK: 0 };
+    watchlist.forEach(item => {
+        if (marketCounts[item.market] !== undefined) {
+            marketCounts[item.market]++;
+        }
+    });
+
+    const markets = Object.keys(marketCounts).filter(m => marketCounts[m] > 0);
+    const counts = markets.map(m => marketCounts[m]);
+
+    marketDistributionChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: markets.map(m => m === 'TW' ? '台股' : m === 'US' ? '美股' : '港股'),
+            datasets: [{
+                data: counts,
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.7)',
+                    'rgba(54, 162, 235, 0.7)',
+                    'rgba(255, 206, 86, 0.7)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+}
+
+// 4. 各市場平均評分對比圖
+function renderMarketAvgScoreChart() {
+    const ctx = document.getElementById('marketAvgScoreChart');
+    if (!ctx) return;
+
+    if (marketAvgScoreChartInstance) {
+        marketAvgScoreChartInstance.destroy();
+    }
+
+    if (watchlist.length === 0) {
+        return;
+    }
+
+    const marketScores = calculateMarketAvgScores();
+    const markets = ['TW', 'US', 'HK'].filter(m => marketScores[m] > 0);
+
+    marketAvgScoreChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: markets.map(m => m === 'TW' ? '台股' : m === 'US' ? '美股' : '港股'),
+            datasets: [{
+                label: '平均AI評分',
+                data: markets.map(m => marketScores[m]),
+                backgroundColor: [
+                    'rgba(255, 99, 132, 0.7)',
+                    'rgba(54, 162, 235, 0.7)',
+                    'rgba(255, 206, 86, 0.7)'
+                ],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    max: 10
+                }
+            }
+        }
+    });
+}
+
+// 5. 市場投資建議分布堆疊圖
+function renderMarketRecommendationChart() {
+    const ctx = document.getElementById('marketRecommendationChart');
+    if (!ctx) return;
+
+    if (marketRecommendationChartInstance) {
+        marketRecommendationChartInstance.destroy();
+    }
+
+    if (analysisHistory.length === 0) {
+        return;
+    }
+
+    const marketRecs = {
+        TW: { buy: 0, hold: 0, sell: 0 },
+        US: { buy: 0, hold: 0, sell: 0 },
+        HK: { buy: 0, hold: 0, sell: 0 }
+    };
+
+    analysisHistory.forEach(item => {
+        const rec = extractRecommendation(item.decision);
+        if (marketRecs[item.market]) {
+            if (rec.includes('買')) marketRecs[item.market].buy++;
+            else if (rec.includes('賣')) marketRecs[item.market].sell++;
+            else marketRecs[item.market].hold++;
+        }
+    });
+
+    const markets = ['TW', 'US', 'HK'].filter(m =>
+        marketRecs[m].buy + marketRecs[m].hold + marketRecs[m].sell > 0
+    );
+
+    marketRecommendationChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: markets.map(m => m === 'TW' ? '台股' : m === 'US' ? '美股' : '港股'),
+            datasets: [
+                {
+                    label: '買入',
+                    data: markets.map(m => marketRecs[m].buy),
+                    backgroundColor: 'rgba(76, 175, 80, 0.7)'
+                },
+                {
+                    label: '持有',
+                    data: markets.map(m => marketRecs[m].hold),
+                    backgroundColor: 'rgba(255, 152, 0, 0.7)'
+                },
+                {
+                    label: '賣出',
+                    data: markets.map(m => marketRecs[m].sell),
+                    backgroundColor: 'rgba(244, 67, 54, 0.7)'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            },
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, beginAtZero: true }
+            }
+        }
+    });
+}
+
+// 6. 平均多維度雷達圖
+function renderDimensionRadarChart() {
+    const ctx = document.getElementById('dimensionRadarChart');
+    if (!ctx) return;
+
+    if (dimensionRadarChartInstance) {
+        dimensionRadarChartInstance.destroy();
+    }
+
+    if (watchlist.length === 0) {
+        return;
+    }
+
+    const avgDimensions = calculateAvgDimensions();
+
+    dimensionRadarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: ['技術面', '基本面', '情緒面'],
+            datasets: [{
+                label: '平均評分',
+                data: [
+                    avgDimensions.technical,
+                    avgDimensions.fundamental,
+                    avgDimensions.sentiment
+                ],
+                backgroundColor: 'rgba(30, 136, 229, 0.2)',
+                borderColor: 'rgba(30, 136, 229, 1)',
+                pointBackgroundColor: 'rgba(30, 136, 229, 1)',
+                pointBorderColor: '#fff',
+                pointHoverBackgroundColor: '#fff',
+                pointHoverBorderColor: 'rgba(30, 136, 229, 1)'
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 10,
+                    ticks: { stepSize: 2 }
+                }
+            }
+        }
+    });
+}
+
+// 7. 各維度評分分布圖
+function renderDimensionDistributionChart() {
+    const ctx = document.getElementById('dimensionDistributionChart');
+    if (!ctx) return;
+
+    if (dimensionDistributionChartInstance) {
+        dimensionDistributionChartInstance.destroy();
+    }
+
+    if (watchlist.length === 0) {
+        return;
+    }
+
+    const dimensions = ['technical', 'fundamental', 'sentiment'];
+    const distributions = {};
+
+    dimensions.forEach(dim => {
+        const scores = watchlist.map(item => {
+            if (item.data && item.data.aiScore && item.data.aiScore[dim]) {
+                return item.data.aiScore[dim];
+            }
+            return item.aiScore || 0;
+        });
+
+        distributions[dim] = {
+            min: Math.min(...scores),
+            max: Math.max(...scores),
+            avg: average(scores)
+        };
+    });
+
+    dimensionDistributionChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['技術面', '基本面', '情緒面'],
+            datasets: [
+                {
+                    label: '平均',
+                    data: dimensions.map(d => distributions[d].avg),
+                    backgroundColor: 'rgba(30, 136, 229, 0.7)'
+                },
+                {
+                    label: '最高',
+                    data: dimensions.map(d => distributions[d].max),
+                    backgroundColor: 'rgba(76, 175, 80, 0.7)'
+                },
+                {
+                    label: '最低',
+                    data: dimensions.map(d => distributions[d].min),
+                    backgroundColor: 'rgba(244, 67, 54, 0.7)'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            },
+            scales: {
+                y: { beginAtZero: true, max: 10 }
+            }
+        }
+    });
+}
+
+// 8. 風險等級分布圓餅圖
+function renderRiskDistributionChart() {
+    const ctx = document.getElementById('riskDistributionChart');
+    if (!ctx) return;
+
+    if (riskDistributionChartInstance) {
+        riskDistributionChartInstance.destroy();
+    }
+
+    if (watchlist.length === 0) {
+        return;
+    }
+
+    const riskLevels = { high: 0, medium: 0, low: 0 };
+
+    watchlist.forEach(item => {
+        const riskScore = extractRiskScore(item.data?.risk || '');
+        if (riskScore >= 7) riskLevels.high++;
+        else if (riskScore >= 4) riskLevels.medium++;
+        else riskLevels.low++;
+    });
+
+    riskDistributionChartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['高風險', '中風險', '低風險'],
+            datasets: [{
+                data: [riskLevels.high, riskLevels.medium, riskLevels.low],
+                backgroundColor: [
+                    'rgba(244, 67, 54, 0.7)',
+                    'rgba(255, 152, 0, 0.7)',
+                    'rgba(76, 175, 80, 0.7)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+}
+
+// 9. 風險-收益散點圖
+function renderRiskReturnScatterChart() {
+    const ctx = document.getElementById('riskReturnScatterChart');
+    if (!ctx) return;
+
+    if (riskReturnScatterChartInstance) {
+        riskReturnScatterChartInstance.destroy();
+    }
+
+    if (watchlist.length === 0) {
+        return;
+    }
+
+    const scatterData = prepareRiskReturnData();
+
+    riskReturnScatterChartInstance = new Chart(ctx, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: '股票',
+                data: scatterData,
+                backgroundColor: 'rgba(30, 136, 229, 0.6)',
+                borderColor: 'rgba(30, 136, 229, 1)',
+                pointRadius: 8,
+                pointHoverRadius: 10
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const point = context.raw;
+                            return `${point.label}: 評分=${point.x.toFixed(1)}, 風險=${point.y.toFixed(1)}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: 'AI評分（預期收益）' },
+                    min: 0,
+                    max: 10
+                },
+                y: {
+                    title: { display: true, text: '風險評分' },
+                    min: 0,
+                    max: 10
+                }
             }
         }
     });
@@ -2976,6 +3506,294 @@ function selectSuggestedStock(code, market) {
     showNotification(`已選擇：${code}`, 'success', 2000);
 }
 
+// ===== 視覺化組件函數 =====
+
+/**
+ * 渲染評分條
+ */
+function renderScoreBar(score) {
+    const percentage = (score / 10) * 100;
+    let color = '#43a047'; // 綠色
+    if (score < 5) color = '#e53935'; // 紅色
+    else if (score < 7) color = '#fb8c00'; // 橙色
+
+    return `
+        <div class="score-bar-container">
+            <div class="score-bar" style="width: ${percentage}%; background: ${color};"></div>
+            <span class="score-text">${score.toFixed(1)}</span>
+        </div>
+    `;
+}
+
+/**
+ * 渲染建議徽章
+ */
+function renderRecommendationBadge(recommendation) {
+    let className = 'badge-hold';
+    if (recommendation.includes('買')) className = 'badge-buy';
+    if (recommendation.includes('賣')) className = 'badge-sell';
+
+    return `<span class="recommendation-badge ${className}">${recommendation}</span>`;
+}
+
+/**
+ * 獲取市場徽章
+ */
+function getMarketBadge(market) {
+    const badges = {
+        'TW': '<span class="market-badge TW">🇹🇼 台股</span>',
+        'US': '<span class="market-badge US">🇺🇸 美股</span>',
+        'HK': '<span class="market-badge HK">🇭🇰 港股</span>'
+    };
+    return badges[market] || market;
+}
+
+// ===== 表格功能函數 =====
+
+// 表格排序狀態
+let watchlistSortKey = 'aiScore';
+let watchlistSortOrder = 'desc';
+let watchlistCurrentPage = 1;
+const watchlistPageSize = 10;
+
+/**
+ * 渲染所有表格
+ */
+function renderAllTables() {
+    renderWatchlistTable();
+    renderRecentAnalysisTable();
+    renderComparisonTable();
+}
+
+/**
+ * 表格標籤頁切換
+ */
+function switchTableTab(tabName) {
+    // 移除所有active類
+    document.querySelectorAll('.table-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelectorAll('.table-pane').forEach(pane => {
+        pane.classList.remove('active');
+    });
+
+    // 添加active類到目標元素
+    const targetBtn = document.querySelector(`[onclick="switchTableTab('${tabName}')"]`);
+    const targetPane = document.getElementById(`table-${tabName}`);
+
+    if (targetBtn) targetBtn.classList.add('active');
+    if (targetPane) targetPane.classList.add('active');
+}
+
+/**
+ * 渲染觀察清單表格
+ */
+function renderWatchlistTable() {
+    const tbody = document.getElementById('watchlist-table-body');
+    if (!tbody) return;
+
+    let filteredData = [...watchlist];
+
+    // 應用搜尋過濾
+    const searchInput = document.getElementById('watchlist-search');
+    const filterSelect = document.getElementById('watchlist-filter');
+
+    if (searchInput && searchInput.value) {
+        const query = searchInput.value.toLowerCase();
+        filteredData = filteredData.filter(item =>
+            item.stock.toLowerCase().includes(query)
+        );
+    }
+
+    if (filterSelect && filterSelect.value !== 'all') {
+        filteredData = filteredData.filter(item => item.market === filterSelect.value);
+    }
+
+    // 應用排序
+    filteredData.sort((a, b) => {
+        let aVal, bVal;
+
+        if (watchlistSortKey === 'technical' || watchlistSortKey === 'fundamental' || watchlistSortKey === 'sentiment') {
+            aVal = a.data?.aiScore?.[watchlistSortKey] || a.aiScore || 0;
+            bVal = b.data?.aiScore?.[watchlistSortKey] || b.aiScore || 0;
+        } else if (watchlistSortKey === 'aiScore') {
+            aVal = a.aiScore || 0;
+            bVal = b.aiScore || 0;
+        } else {
+            aVal = a[watchlistSortKey];
+            bVal = b[watchlistSortKey];
+        }
+
+        if (watchlistSortOrder === 'asc') {
+            return aVal > bVal ? 1 : -1;
+        } else {
+            return aVal < bVal ? 1 : -1;
+        }
+    });
+
+    // 計算分頁
+    const totalPages = Math.ceil(filteredData.length / watchlistPageSize);
+    const startIndex = (watchlistCurrentPage - 1) * watchlistPageSize;
+    const endIndex = startIndex + watchlistPageSize;
+    const paginatedData = filteredData.slice(startIndex, endIndex);
+
+    // 渲染表格
+    if (paginatedData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 30px;">暫無數據</td></tr>';
+    } else {
+        tbody.innerHTML = paginatedData.map((item, index) => {
+            const technical = item.data?.aiScore?.technical || item.aiScore || 0;
+            const fundamental = item.data?.aiScore?.fundamental || item.aiScore || 0;
+            const sentiment = item.data?.aiScore?.sentiment || item.aiScore || 0;
+
+            return `
+                <tr>
+                    <td><strong>${item.stock}</strong></td>
+                    <td>${getMarketBadge(item.market)}</td>
+                    <td>${renderScoreBar(item.aiScore)}</td>
+                    <td>${technical.toFixed(1)}</td>
+                    <td>${fundamental.toFixed(1)}</td>
+                    <td>${sentiment.toFixed(1)}</td>
+                    <td>${renderRecommendationBadge(item.recommendation)}</td>
+                    <td>${formatDateShort(item.addedDate)}</td>
+                    <td>
+                        <button onclick="viewWatchlistItem(${startIndex + index})" class="btn-icon" title="查看">👁️</button>
+                        <button onclick="removeFromWatchlist(${startIndex + index})" class="btn-icon" title="刪除">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // 更新分頁資訊
+    const pageInfo = document.getElementById('watchlist-page-info');
+    const prevBtn = document.getElementById('watchlist-prev');
+    const nextBtn = document.getElementById('watchlist-next');
+
+    if (pageInfo) {
+        pageInfo.textContent = `第 ${watchlistCurrentPage} / ${totalPages || 1} 頁 (共 ${filteredData.length} 項)`;
+    }
+
+    if (prevBtn) {
+        prevBtn.disabled = watchlistCurrentPage <= 1;
+    }
+
+    if (nextBtn) {
+        nextBtn.disabled = watchlistCurrentPage >= totalPages;
+    }
+
+    // 更新表頭排序指示器
+    document.querySelectorAll('#watchlist-table th').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+    });
+}
+
+/**
+ * 觀察清單表格排序
+ */
+function sortWatchlistTable(key) {
+    if (watchlistSortKey === key) {
+        watchlistSortOrder = watchlistSortOrder === 'asc' ? 'desc' : 'asc';
+    } else {
+        watchlistSortKey = key;
+        watchlistSortOrder = 'desc';
+    }
+
+    watchlistCurrentPage = 1;
+    renderWatchlistTable();
+}
+
+/**
+ * 觀察清單表格過濾
+ */
+function filterWatchlistTable() {
+    watchlistCurrentPage = 1;
+    renderWatchlistTable();
+}
+
+/**
+ * 觀察清單表格分頁
+ */
+function prevWatchlistPage() {
+    if (watchlistCurrentPage > 1) {
+        watchlistCurrentPage--;
+        renderWatchlistTable();
+    }
+}
+
+function nextWatchlistPage() {
+    watchlistCurrentPage++;
+    renderWatchlistTable();
+}
+
+/**
+ * 渲染最近分析表格
+ */
+function renderRecentAnalysisTable() {
+    const tbody = document.getElementById('recent-table-body');
+    if (!tbody) return;
+
+    const recentData = analysisHistory.slice(0, 20);
+
+    if (recentData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">暫無分析記錄</td></tr>';
+    } else {
+        tbody.innerHTML = recentData.map((item, index) => {
+            const score = typeof item.aiScore === 'object' ? item.aiScore.overall : item.aiScore || 0;
+            const rec = extractRecommendation(item.decision);
+
+            return `
+                <tr>
+                    <td>${formatRelativeTime(item.timestamp)}</td>
+                    <td><strong>${item.stock}</strong></td>
+                    <td>${getMarketBadge(item.market)}</td>
+                    <td>${item.depth}</td>
+                    <td>${renderScoreBar(score)}</td>
+                    <td>${renderRecommendationBadge(rec)}</td>
+                    <td>
+                        <button onclick="viewHistoryItem(${index})" class="btn-icon" title="查看">👁️</button>
+                        <button onclick="removeHistory(${index})" class="btn-icon" title="刪除">🗑️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
+/**
+ * 渲染指標對比表格
+ */
+function renderComparisonTable() {
+    const tbody = document.getElementById('comparison-table-body');
+    if (!tbody) return;
+
+    // 按評分排序
+    const rankedWatchlist = [...watchlist].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
+
+    if (rankedWatchlist.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 30px;">暫無數據</td></tr>';
+    } else {
+        tbody.innerHTML = rankedWatchlist.map((item, index) => {
+            const technical = item.data?.aiScore?.technical || item.aiScore || 0;
+            const fundamental = item.data?.aiScore?.fundamental || item.aiScore || 0;
+            const sentiment = item.data?.aiScore?.sentiment || item.aiScore || 0;
+
+            return `
+                <tr>
+                    <td><strong>${index + 1}</strong></td>
+                    <td><strong>${item.stock}</strong></td>
+                    <td>${getMarketBadge(item.market)}</td>
+                    <td>${renderScoreBar(item.aiScore)}</td>
+                    <td>${technical.toFixed(1)}</td>
+                    <td>${fundamental.toFixed(1)}</td>
+                    <td>${sentiment.toFixed(1)}</td>
+                    <td>${renderRecommendationBadge(item.recommendation)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
 // ===== 全局函數（供 HTML 調用）=====
 window.removeFromWatchlist = removeFromWatchlist;
 window.viewWatchlistItem = viewWatchlistItem;
@@ -2987,3 +3805,9 @@ window.confirmCompare = confirmCompare;
 window.viewStockDetail = viewStockDetail;
 window.closeStockNotFoundDialog = closeStockNotFoundDialog;
 window.selectSuggestedStock = selectSuggestedStock;
+window.switchTableTab = switchTableTab;
+window.sortWatchlistTable = sortWatchlistTable;
+window.filterWatchlistTable = filterWatchlistTable;
+window.prevWatchlistPage = prevWatchlistPage;
+window.nextWatchlistPage = nextWatchlistPage;
+window.toggleChartLine = toggleChartLine;
